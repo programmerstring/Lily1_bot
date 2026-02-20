@@ -8,7 +8,8 @@ import os
 import requests
 import json
 
-BOT_TOKEN = "8197964921:AAHiv3r4h_PLQtIOGrl-vjCf-Cl7xmeqOIc"
+import os
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 # ------------------------------
 # Start command
@@ -112,3 +113,4 @@ app.add_handler(CallbackQueryHandler(button))
 # Run the bot
 # ------------------------------
 app.run_polling()
+
