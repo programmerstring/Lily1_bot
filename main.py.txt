@@ -1,0 +1,114 @@
+import nest_asyncio
+nest_asyncio.apply()
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+import yt_dlp
+import os
+import requests
+import json
+
+BOT_TOKEN = "8197964921:AAHiv3r4h_PLQtIOGrl-vjCf-Cl7xmeqOIc"
+
+# ------------------------------
+# Start command
+# ------------------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_message = (
+        "?? Welcome to Lily Downloader Bot!\n\n"
+        "?? Download and enjoy spiritual songs, preaching, and teachings.\n"
+        "?? Send a YouTube link and get audio + Amharic lyrics (if available).\n\n"
+        "? Be blessed and enjoy!"
+    )
+    await update.message.reply_text(welcome_message)
+
+# ------------------------------
+# Handle YouTube links
+# ------------------------------
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text.strip()
+    if "youtube.com" in url or "youtu.be" in url:
+        context.user_data['url'] = url
+        keyboard = [[InlineKeyboardButton("?? Download Audio + Lyrics", callback_data='audio')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Choose what you want to download:", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text("? Sorry, I only support YouTube links for now.")
+
+# ------------------------------
+# Button callback
+# ------------------------------
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    choice = query.data
+    url = context.user_data.get('url')
+
+    os.makedirs("downloads", exist_ok=True)
+
+    if choice == 'audio':
+        await query.edit_message_text("? Downloading audio and fetching lyrics...")
+
+        ydl_opts = {
+            'format': 'bestaudio[abr<=192]',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'noplaylist': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+
+        try:
+            # Download audio
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                file_name = ydl.prepare_filename(info).replace('.webm', '.mp3')
+
+            # Send audio file
+            await query.message.reply_document(document=open(file_name, 'rb'), filename=os.path.basename(file_name))
+
+            # ------------------------------
+            # Fetch Amharic lyrics/subtitles
+            # ------------------------------
+            sub_text = ""
+            try:
+                captions = info.get('subtitles') or info.get('automatic_captions')
+                if captions and 'am' in captions:
+                    sub_url = captions['am'][0]['url']
+                    raw_subs = requests.get(sub_url).text
+                    sub_data = json.loads(raw_subs)
+                    events = sub_data.get('events', []) or sub_data.get('body', [])
+                    for item in events:
+                        for seg in item.get('segs', []):
+                            text = seg.get('utf8', '').strip()
+                            if text:
+                                sub_text += text + "\n"
+                    sub_text = sub_text.strip()
+                    if not sub_text:
+                        sub_text = "? Amharic subtitles not available."
+                    if len(sub_text) > 3500:
+                        sub_text = sub_text[:3500] + "\n\n... (Lyrics truncated)"
+                else:
+                    sub_text = "? Amharic subtitles not available."
+            except Exception as e:
+                sub_text = f"? Could not fetch lyrics: {e}"
+
+            await query.message.reply_text(f"?? Amharic Lyrics:\n\n{sub_text}")
+            await query.message.reply_text("? Enjoy your spiritual content and stay blessed! ??")
+        except Exception as e:
+            await query.message.reply_text(f"? Error: {e}")
+
+# ------------------------------
+# Build the bot
+# ------------------------------
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
+app.add_handler(CallbackQueryHandler(button))
+
+# ------------------------------
+# Run the bot
+# ------------------------------
+app.run_polling()
