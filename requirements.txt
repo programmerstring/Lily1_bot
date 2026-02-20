@@ -1,0 +1,5 @@
+python-telegram-bot==22.6.0
+yt-dlp==2026.2.4
+nest_asyncio==1.6.0
+ffmpeg-python==0.2.0
+requests==2.31.0
